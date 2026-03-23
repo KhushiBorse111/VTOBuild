@@ -130,15 +130,26 @@ export async function processTryOn(userImage: string, item: TryOnItem, customGar
       let errorMessage = 'Failed to process try-on.';
       try {
         const errorData = await response.json();
-        errorMessage = errorData.error || errorMessage;
+        const rawError = errorData.error;
+        
+        // Handle if error is an object or a string
+        const errorString = typeof rawError === 'object' ? JSON.stringify(rawError) : String(rawError);
+        
+        // Handle specific Rate Limit (Quota) error
+        if (response.status === 429 || errorString.toLowerCase().includes('quota') || errorString.includes('RESOURCE_EXHAUSTED')) {
+          errorMessage = "The AI is currently busy due to high demand (Rate Limit reached). Please wait about 60 seconds and try again.";
+        } else {
+          errorMessage = typeof rawError === 'string' ? rawError : (rawError?.message || errorMessage);
+        }
       } catch (e) {
         // Fallback if JSON parsing fails
         if (response.status === 504) errorMessage = "The request timed out. Try using a smaller image or a different item.";
         if (response.status === 413) errorMessage = "The image is too large. Please try a smaller photo.";
+        if (response.status === 429) errorMessage = "The AI is currently busy. Please wait a minute and try again.";
       }
       
       console.error("Try-on processing failed:", errorMessage);
-      alert(`Error: ${errorMessage}`);
+      alert(errorMessage);
       return null;
     }
 

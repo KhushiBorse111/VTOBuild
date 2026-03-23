@@ -112,6 +112,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(500).json({ error: "No image data found in AI response." });
   } catch (error: any) {
     console.error("Try-on API failed:", error);
+    
+    // Check if it's a quota/rate limit error from Gemini
+    const errorString = JSON.stringify(error);
+    if (error.status === 429 || error.code === 429 || errorString.includes('429') || errorString.toLowerCase().includes('quota')) {
+      return res.status(429).json({ 
+        error: "The AI service is currently at its free-tier limit. Please wait 60 seconds and try again." 
+      });
+    }
+
     res.status(500).json({ error: error.message || "Internal server error during AI processing." });
   }
 }

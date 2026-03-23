@@ -125,7 +125,9 @@ export interface TryOnResponse {
 
 export async function processTryOn(userImage: string, item: TryOnItem, customGarment?: string): Promise<TryOnResponse> {
   try {
-    const response = await fetch('/api/try-on', {
+    // Add cache-busting query param to bypass any edge caching
+    const timestamp = Date.now();
+    const response = await fetch(`/api/try-on?t=${timestamp}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -135,12 +137,35 @@ export async function processTryOn(userImage: string, item: TryOnItem, customGar
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error || 'Failed to process try-on.';
+      const rawError = errorData.error;
+      let errorMessage = 'Failed to process try-on.';
+      
+      if (typeof rawError === 'string') {
+        errorMessage = rawError;
+      } else if (rawError && typeof rawError === 'object') {
+        errorMessage = rawError.message || JSON.stringify(rawError);
+      }
+
       console.error("Try-on processing failed:", errorMessage);
+      
+      const isRateLimit = response.status === 429 || 
+                          errorMessage.toLowerCase().includes('quota') || 
+                          errorMessage.toLowerCase().includes('resource_exhausted');
+
+      if (isRateLimit) {
+        errorMessage = "The AI is currently busy due to high demand (Free Tier limit reached). Please wait about 60 seconds and try again. Tip: Try using a different photo or a simpler item.";
+      } else if (response.status === 504) {
+        errorMessage = "The request timed out. The AI took too long to process. Try a smaller photo.";
+      } else if (response.status === 413) {
+        errorMessage = "The image is too large. Please try a smaller photo.";
+      } else if (response.status === 500) {
+        errorMessage = "The AI server is having trouble. This might be temporary, please try again.";
+      }
+
       return { 
         resultImage: null, 
         error: errorMessage, 
-        isRateLimit: response.status === 429 || errorMessage.toLowerCase().includes('quota')
+        isRateLimit
       };
     }
 

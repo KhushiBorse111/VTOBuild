@@ -1,7 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
 export interface TryOnItem {
   id: string;
   name: string;
@@ -120,82 +116,24 @@ export const SAMPLE_USER_PHOTOS = [
   }
 ];
 
-async function imageUrlToBase64(url: string): Promise<string> {
-  const response = await fetch(url);
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
-      resolve(base64.split(',')[1]);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
-export async function processTryOn(userImageBase64: string, item: TryOnItem, customGarmentBase64?: string): Promise<string | null> {
+export async function processTryOn(userImage: string, item: TryOnItem, customGarment?: string): Promise<string | null> {
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      console.error("GEMINI_API_KEY is missing. Please set it in your environment variables.");
-      return null;
-    }
-
-    let userImageData: string;
-    if (userImageBase64.startsWith('data:')) {
-      userImageData = userImageBase64.split(',')[1];
-    } else {
-      // It's a URL (sample photo)
-      userImageData = await imageUrlToBase64(userImageBase64);
-    }
-
-    const parts: any[] = [
-      {
-        inlineData: {
-          data: userImageData,
-          mimeType: 'image/png',
-        },
+    const response = await fetch('/api/try-on', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-    ];
-
-    if (item.isCustom && customGarmentBase64) {
-      const garmentData = customGarmentBase64.startsWith('data:') 
-        ? customGarmentBase64.split(',')[1] 
-        : await imageUrlToBase64(customGarmentBase64);
-
-      parts.push({
-        inlineData: {
-          data: garmentData,
-          mimeType: 'image/png',
-        },
-      });
-      parts.push({
-        text: `This is a photo of a person and a photo of a garment. Please virtually overlay the garment from the second photo onto the person in the first photo. Ensure the garment fits naturally on their body. Maintain the original person's features and background while seamlessly integrating the new clothing. The final image should look like a real photo of them wearing the garment.`,
-      });
-    } else {
-      parts.push({
-        text: `This is a photo of a person. Please virtually overlay this item: "${item.name}" (${item.description}) onto the person in the photo. Ensure the item fits naturally on their body/face. Maintain the original person's features and background while seamlessly integrating the new clothing/accessory. The final image should look like a real photo of them wearing the item.`,
-      });
-    }
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: { parts },
+      body: JSON.stringify({ userImage, item, customGarment }),
     });
 
-    if (!response.candidates?.[0]?.content?.parts) {
-      console.error("AI returned an empty response. This might be due to safety filters.");
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Try-on processing failed:", errorData.error);
       return null;
     }
 
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
-    }
-    
-    console.warn("No image data found in AI response.");
-    return null;
+    const data = await response.json();
+    return data.resultImage;
   } catch (error) {
     console.error("Try-on processing failed:", error);
     return null;

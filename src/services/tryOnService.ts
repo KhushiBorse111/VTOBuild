@@ -120,21 +120,52 @@ export const SAMPLE_USER_PHOTOS = [
   }
 ];
 
+async function imageUrlToBase64(url: string): Promise<string> {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      resolve(base64.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 export async function processTryOn(userImageBase64: string, item: TryOnItem, customGarmentBase64?: string): Promise<string | null> {
   try {
+    if (!process.env.GEMINI_API_KEY) {
+      console.error("GEMINI_API_KEY is missing. Please set it in your environment variables.");
+      return null;
+    }
+
+    let userImageData: string;
+    if (userImageBase64.startsWith('data:')) {
+      userImageData = userImageBase64.split(',')[1];
+    } else {
+      // It's a URL (sample photo)
+      userImageData = await imageUrlToBase64(userImageBase64);
+    }
+
     const parts: any[] = [
       {
         inlineData: {
-          data: userImageBase64.split(',')[1],
+          data: userImageData,
           mimeType: 'image/png',
         },
       },
     ];
 
     if (item.isCustom && customGarmentBase64) {
+      const garmentData = customGarmentBase64.startsWith('data:') 
+        ? customGarmentBase64.split(',')[1] 
+        : await imageUrlToBase64(customGarmentBase64);
+
       parts.push({
         inlineData: {
-          data: customGarmentBase64.split(',')[1],
+          data: garmentData,
           mimeType: 'image/png',
         },
       });
@@ -152,11 +183,18 @@ export async function processTryOn(userImageBase64: string, item: TryOnItem, cus
       contents: { parts },
     });
 
+    if (!response.candidates?.[0]?.content?.parts) {
+      console.error("AI returned an empty response. This might be due to safety filters.");
+      return null;
+    }
+
     for (const part of response.candidates[0].content.parts) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
+    
+    console.warn("No image data found in AI response.");
     return null;
   } catch (error) {
     console.error("Try-on processing failed:", error);

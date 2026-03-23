@@ -1,0 +1,5 @@
+{
+  "name": "Celestique",
+  "description": "A futuristic virtual try-on experience with a neon purple aesthetic.",
+  "requestFramePermissions": ["camera"]
+}

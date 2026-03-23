@@ -125,9 +125,7 @@ export interface TryOnResponse {
 
 export async function processTryOn(userImage: string, item: TryOnItem, customGarment?: string): Promise<TryOnResponse> {
   try {
-    // Add cache-busting query param to bypass any edge caching
-    const timestamp = Date.now();
-    const response = await fetch(`/api/try-on?t=${timestamp}`, {
+    const response = await fetch('/api/try-on', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -136,38 +134,20 @@ export async function processTryOn(userImage: string, item: TryOnItem, customGar
     });
 
     if (!response.ok) {
-      let errorMessage = 'The AI server encountered an error. Please try again.';
-      let isRateLimit = false;
-      
-      try {
-        const errorData = await response.json();
-        const rawError = errorData.error;
-        const errorString = typeof rawError === 'object' ? JSON.stringify(rawError) : String(rawError);
-        
-        if (response.status === 429 || errorString.toLowerCase().includes('quota') || errorString.includes('RESOURCE_EXHAUSTED')) {
-          errorMessage = "The AI is currently busy due to high demand (Free Tier limit reached). Please wait about 60 seconds and try again. Tip: Try using a different photo or a simpler item.";
-          isRateLimit = true;
-        } else {
-          errorMessage = typeof rawError === 'string' ? rawError : (rawError?.message || errorMessage);
-        }
-      } catch (e) {
-        if (response.status === 504) errorMessage = "The request timed out. The AI took too long to process. Try a smaller photo.";
-        if (response.status === 413) errorMessage = "The image is too large. Please try a smaller photo.";
-        if (response.status === 429) {
-          errorMessage = "The AI is currently busy. Please wait a minute and try again.";
-          isRateLimit = true;
-        }
-        if (response.status === 500) errorMessage = "The AI server is having trouble. This might be temporary, please try again.";
-      }
-      
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.error || 'Failed to process try-on.';
       console.error("Try-on processing failed:", errorMessage);
-      return { resultImage: null, error: errorMessage, isRateLimit };
+      return { 
+        resultImage: null, 
+        error: errorMessage, 
+        isRateLimit: response.status === 429 || errorMessage.toLowerCase().includes('quota')
+      };
     }
 
     const data = await response.json();
     return { resultImage: data.resultImage };
   } catch (error) {
     console.error("Try-on processing failed:", error);
-    return { resultImage: null, error: "Network error. Please check your internet connection." };
+    return { resultImage: null, error: "Network error. Please try again." };
   }
 }

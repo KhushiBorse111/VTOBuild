@@ -486,11 +486,6 @@ export default function App() {
                     className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-[11px] text-red-400 font-medium text-center"
                   >
                     {errorMessage}
-                    {errorMessage.includes('Failed to process') && (
-                      <div className="mt-1 opacity-60">
-                        Tip: If this persists, try clearing your browser cache or opening in a new tab.
-                      </div>
-                    )}
                   </motion.div>
                 )}
                 
@@ -602,7 +597,7 @@ export default function App() {
           <span>Neural Engine: Active</span>
         </div>
         <div>
-          v1.0.5 • © 2026 Celestique Digital Fashion
+          © 2026 Celestique Digital Fashion
         </div>
       </footer>
     </div>

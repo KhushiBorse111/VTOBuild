@@ -39,21 +39,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return input.split(',')[1];
       } else {
         try {
+          console.log(`Fetching image from URL: ${input}`);
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+          const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
           
-          const response = await fetch(input, { signal: controller.signal });
+          const response = await fetch(input, { 
+            signal: controller.signal,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+          });
           clearTimeout(timeoutId);
           
-          if (!response.ok) throw new Error(`Failed to fetch image from URL: ${input} (Status: ${response.status})`);
+          if (!response.ok) throw new Error(`Failed to fetch image from URL (Status: ${response.status})`);
           const buffer = await response.arrayBuffer();
           return Buffer.from(buffer).toString('base64');
         } catch (fetchError: any) {
           console.error("Image fetch error:", fetchError);
-          if (fetchError.name === 'AbortError') {
-            throw new Error(`Timeout fetching image from URL: ${input}. The server took too long to respond.`);
-          }
-          throw new Error(`Could not retrieve image from URL: ${input}. Please try uploading a local file instead.`);
+          throw new Error(`Could not retrieve image. Please try uploading a local file instead.`);
         }
       }
     };
@@ -109,17 +112,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const candidate = response.candidates?.[0];
-    if (!candidate?.content?.parts) {
-      console.error("AI Error: Empty response from Gemini.", response);
-      const finishReason = candidate?.finishReason;
-      let errorMsg = "AI returned an empty response.";
-      if (finishReason === 'SAFETY') errorMsg = "The request was blocked by AI safety filters. Please try a different image.";
+    const candidates = response.candidates;
+    if (!candidates || candidates.length === 0 || !candidates[0].content?.parts) {
+      console.error("AI Error: Empty or invalid response from Gemini.", response);
+      const finishReason = candidates?.[0]?.finishReason;
+      let errorMsg = "AI returned an empty response. This usually happens if the prompt is too complex or blocked.";
+      if (finishReason === 'SAFETY') errorMsg = "The request was blocked by AI safety filters. Please try a different image or item.";
       if (finishReason === 'RECITATION') errorMsg = "The request was blocked due to copyright recitation filters.";
       return res.status(500).json({ error: errorMsg });
     }
 
-    for (const part of response.candidates[0].content.parts) {
+    for (const part of candidates[0].content.parts) {
       if (part.inlineData) {
         console.log("Success: Image generated.");
         return res.json({ resultImage: `data:image/png;base64,${part.inlineData.data}` });

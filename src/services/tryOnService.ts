@@ -125,7 +125,9 @@ export interface TryOnResponse {
 
 export async function processTryOn(userImage: string, item: TryOnItem, customGarment?: string): Promise<TryOnResponse> {
   try {
-    const response = await fetch('/api/try-on', {
+    // Add cache-busting query param to bypass any edge caching
+    const timestamp = Date.now();
+    const response = await fetch(`/api/try-on?t=${timestamp}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -134,7 +136,7 @@ export async function processTryOn(userImage: string, item: TryOnItem, customGar
     });
 
     if (!response.ok) {
-      let errorMessage = 'Failed to process try-on.';
+      let errorMessage = 'The AI server encountered an error. Please try again.';
       let isRateLimit = false;
       
       try {
@@ -149,12 +151,13 @@ export async function processTryOn(userImage: string, item: TryOnItem, customGar
           errorMessage = typeof rawError === 'string' ? rawError : (rawError?.message || errorMessage);
         }
       } catch (e) {
-        if (response.status === 504) errorMessage = "The request timed out. Try using a smaller image or a different item.";
+        if (response.status === 504) errorMessage = "The request timed out. The AI took too long to process. Try a smaller photo.";
         if (response.status === 413) errorMessage = "The image is too large. Please try a smaller photo.";
         if (response.status === 429) {
           errorMessage = "The AI is currently busy. Please wait a minute and try again.";
           isRateLimit = true;
         }
+        if (response.status === 500) errorMessage = "The AI server is having trouble. This might be temporary, please try again.";
       }
       
       console.error("Try-on processing failed:", errorMessage);
@@ -165,6 +168,6 @@ export async function processTryOn(userImage: string, item: TryOnItem, customGar
     return { resultImage: data.resultImage };
   } catch (error) {
     console.error("Try-on processing failed:", error);
-    return { resultImage: null, error: "Network error. Please check your connection." };
+    return { resultImage: null, error: "Network error. Please check your internet connection." };
   }
 }

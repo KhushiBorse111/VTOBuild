@@ -127,8 +127,18 @@ export async function processTryOn(userImage: string, item: TryOnItem, customGar
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Try-on processing failed:", errorData.error);
+      let errorMessage = 'Failed to process try-on.';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (e) {
+        // Fallback if JSON parsing fails
+        if (response.status === 504) errorMessage = "The request timed out. Try using a smaller image or a different item.";
+        if (response.status === 413) errorMessage = "The image is too large. Please try a smaller photo.";
+      }
+      
+      console.error("Try-on processing failed:", errorMessage);
+      alert(`Error: ${errorMessage}`);
       return null;
     }
 

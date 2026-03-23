@@ -60,30 +60,62 @@ export default function App() {
     localStorage.setItem('celestique_outfits', JSON.stringify(updated));
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const resizeImage = (dataUrl: string, maxWidth = 1024, maxHeight = 1024): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = dataUrl;
+    });
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setUserImage(reader.result as string);
+      reader.onloadend = async () => {
+        const resized = await resizeImage(reader.result as string);
+        setUserImage(resized);
         setResultImage(null);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleGarmentUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGarmentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const base64 = reader.result as string;
-        setCustomGarment(base64);
+        const resized = await resizeImage(base64);
+        setCustomGarment(resized);
         const customItem: TryOnItem = {
           id: 'custom-' + Date.now(),
           name: 'Custom Garment',
           category: 'full',
-          imageUrl: base64,
+          imageUrl: resized,
           description: 'User uploaded custom garment.',
           isCustom: true
         };
@@ -108,7 +140,7 @@ export default function App() {
     }
   };
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current) {
       const context = canvasRef.current.getContext('2d');
       if (context) {
@@ -116,7 +148,8 @@ export default function App() {
         canvasRef.current.height = videoRef.current.videoHeight;
         context.drawImage(videoRef.current, 0, 0);
         const dataUrl = canvasRef.current.toDataURL('image/png');
-        setUserImage(dataUrl);
+        const resized = await resizeImage(dataUrl);
+        setUserImage(resized);
         setResultImage(null);
         stopCamera();
       }

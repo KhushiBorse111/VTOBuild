@@ -21,6 +21,8 @@ export default function App() {
   const [selectedItem, setSelectedItem] = useState<TryOnItem | null>(null);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [view, setView] = useState<'home' | 'profile'>('home');
   const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
@@ -30,6 +32,14 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const garmentInputRef = useRef<HTMLInputElement>(null);
+
+  // Cooldown timer
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [cooldown]);
 
   // Load saved outfits from local storage
   useEffect(() => {
@@ -60,7 +70,7 @@ export default function App() {
     localStorage.setItem('celestique_outfits', JSON.stringify(updated));
   };
 
-  const resizeImage = (dataUrl: string, maxWidth = 1024, maxHeight = 1024): Promise<string> => {
+  const resizeImage = (dataUrl: string, maxWidth = 768, maxHeight = 768): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
@@ -98,6 +108,7 @@ export default function App() {
         const resized = await resizeImage(reader.result as string);
         setUserImage(resized);
         setResultImage(null);
+        setErrorMessage(null);
       };
       reader.readAsDataURL(file);
     }
@@ -120,6 +131,7 @@ export default function App() {
           isCustom: true
         };
         setSelectedItem(customItem);
+        setErrorMessage(null);
       };
       reader.readAsDataURL(file);
     }
@@ -151,6 +163,7 @@ export default function App() {
         const resized = await resizeImage(dataUrl);
         setUserImage(resized);
         setResultImage(null);
+        setErrorMessage(null);
         stopCamera();
       }
     }
@@ -165,14 +178,20 @@ export default function App() {
   };
 
   const handleTryOn = async () => {
-    if (!userImage || !selectedItem) return;
+    if (!userImage || !selectedItem || cooldown > 0) return;
 
     setIsProcessing(true);
-    const result = await processTryOn(userImage, selectedItem, customGarment || undefined);
-    if (result) {
-      setResultImage(result);
+    setErrorMessage(null);
+    
+    const response = await processTryOn(userImage, selectedItem, customGarment || undefined);
+    
+    if (response.resultImage) {
+      setResultImage(response.resultImage);
     } else {
-      alert("Failed to process try-on. Please try again.");
+      setErrorMessage(response.error || "Failed to process try-on.");
+      if (response.isRateLimit) {
+        setCooldown(60);
+      }
     }
     setIsProcessing(false);
   };
@@ -460,11 +479,21 @@ export default function App() {
               </div>
 
               <div className="p-6 border-t border-white/10 bg-black/20">
+                {errorMessage && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-[11px] text-red-400 font-medium text-center"
+                  >
+                    {errorMessage}
+                  </motion.div>
+                )}
+                
                 <button 
-                  disabled={!userImage || !selectedItem || isProcessing}
+                  disabled={!userImage || !selectedItem || isProcessing || cooldown > 0}
                   onClick={handleTryOn}
                   className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all ${
-                    !userImage || !selectedItem || isProcessing
+                    !userImage || !selectedItem || isProcessing || cooldown > 0
                       ? 'bg-white/5 text-white/20 cursor-not-allowed'
                       : 'bg-neon-purple text-white shadow-[0_0_30px_rgba(188,19,254,0.4)] hover:shadow-[0_0_40px_rgba(188,19,254,0.6)] active:scale-95'
                   }`}
@@ -473,6 +502,11 @@ export default function App() {
                     <>
                       <RefreshCw className="w-6 h-6 animate-spin" />
                       Processing...
+                    </>
+                  ) : cooldown > 0 ? (
+                    <>
+                      <RefreshCw className="w-6 h-6" />
+                      Retry in {cooldown}s
                     </>
                   ) : (
                     <>

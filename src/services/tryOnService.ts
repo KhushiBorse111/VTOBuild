@@ -116,7 +116,14 @@ export const SAMPLE_USER_PHOTOS = [
   }
 ];
 
-export async function processTryOn(userImage: string, item: TryOnItem, customGarment?: string): Promise<string | null> {
+export interface TryOnResponse {
+  resultImage: string | null;
+  error?: string;
+  isRateLimit?: boolean;
+  retryAfter?: number;
+}
+
+export async function processTryOn(userImage: string, item: TryOnItem, customGarment?: string): Promise<TryOnResponse> {
   try {
     const response = await fetch('/api/try-on', {
       method: 'POST',
@@ -128,35 +135,36 @@ export async function processTryOn(userImage: string, item: TryOnItem, customGar
 
     if (!response.ok) {
       let errorMessage = 'Failed to process try-on.';
+      let isRateLimit = false;
+      
       try {
         const errorData = await response.json();
         const rawError = errorData.error;
-        
-        // Handle if error is an object or a string
         const errorString = typeof rawError === 'object' ? JSON.stringify(rawError) : String(rawError);
         
-        // Handle specific Rate Limit (Quota) error
         if (response.status === 429 || errorString.toLowerCase().includes('quota') || errorString.includes('RESOURCE_EXHAUSTED')) {
-          errorMessage = "The AI is currently busy due to high demand (Rate Limit reached). Please wait about 60 seconds and try again.";
+          errorMessage = "The AI is currently busy due to high demand (Free Tier limit reached). Please wait about 60 seconds and try again. Tip: Try using a different photo or a simpler item.";
+          isRateLimit = true;
         } else {
           errorMessage = typeof rawError === 'string' ? rawError : (rawError?.message || errorMessage);
         }
       } catch (e) {
-        // Fallback if JSON parsing fails
         if (response.status === 504) errorMessage = "The request timed out. Try using a smaller image or a different item.";
         if (response.status === 413) errorMessage = "The image is too large. Please try a smaller photo.";
-        if (response.status === 429) errorMessage = "The AI is currently busy. Please wait a minute and try again.";
+        if (response.status === 429) {
+          errorMessage = "The AI is currently busy. Please wait a minute and try again.";
+          isRateLimit = true;
+        }
       }
       
       console.error("Try-on processing failed:", errorMessage);
-      alert(errorMessage);
-      return null;
+      return { resultImage: null, error: errorMessage, isRateLimit };
     }
 
     const data = await response.json();
-    return data.resultImage;
+    return { resultImage: data.resultImage };
   } catch (error) {
     console.error("Try-on processing failed:", error);
-    return null;
+    return { resultImage: null, error: "Network error. Please check your connection." };
   }
 }

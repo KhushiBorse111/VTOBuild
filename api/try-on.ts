@@ -86,10 +86,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     console.log("Calling Gemini AI...");
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: { parts },
-    });
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: { parts },
+      });
+    } catch (firstError: any) {
+      const errStr = JSON.stringify(firstError).toLowerCase();
+      if (errStr.includes('429') || errStr.includes('quota') || errStr.includes('resource_exhausted')) {
+        console.log("Gemini 2.5 Rate Limited. Trying fallback to Gemini 3.1...");
+        try {
+          response = await ai.models.generateContent({
+            model: 'gemini-3.1-flash-image-preview',
+            contents: { parts },
+          });
+        } catch (secondError: any) {
+          throw secondError; // Re-throw if fallback also fails
+        }
+      } else {
+        throw firstError;
+      }
+    }
 
     const candidate = response.candidates?.[0];
     if (!candidate?.content?.parts) {
